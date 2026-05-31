@@ -92,6 +92,22 @@
 - **FR-003**: Users MUST be able to [key interaction, e.g., "reset their password"]
 - **FR-004**: System MUST [data requirement, e.g., "persist user preferences"]
 - **FR-005**: System MUST [behavior, e.g., "log all security events"]
+- **FR-MASK-001**: System MUST state which supported extensions are in scope
+  for this feature: `.txt`, `.csv`, `.log`, `.docx`, `.xlsx`, `.pptx`, and
+  text-based `.pdf`.
+- **FR-MASK-002**: System MUST use `機密情報検出結果.xlsx` as the replacement
+  table and treat `No`, `検出語句`, and `置換提案` as required header columns.
+- **FR-MASK-003**: System MUST replace each `検出語句` with its matching
+  `置換提案` deterministically and without leaving reversible mappings in the
+  produced files.
+- **FR-MASK-004**: Users MUST be able to select either one input file or one
+  folder by screen operation.
+- **FR-MASK-005**: System MUST produce replaced files and
+  `skipped_unsupported.txt`; unsupported or unprocessable files MUST be
+  recorded rather than silently ignored.
+- **FR-MASK-006**: System MUST explicitly exclude image text, scanned PDFs,
+  embedded objects, and OCR from first-version behavior unless a later
+  constitution amendment changes scope.
 
 *Example of marking unclear requirements:*
 
@@ -102,6 +118,12 @@
 
 - **[Entity 1]**: [What it represents, key attributes without implementation]
 - **[Entity 2]**: [What it represents, relationships to other entities]
+- **Replacement Rule**: A row from `機密情報検出結果.xlsx` containing `No`,
+  `検出語句`, and `置換提案`.
+- **Input Target**: A selected file or a file discovered inside the selected
+  folder, including path, extension, support status, and processing result.
+- **Skip Report Entry**: A record written to `skipped_unsupported.txt` for
+  unsupported extensions, excluded content types, or processing failures.
 
 ## Success Criteria *(mandatory)*
 

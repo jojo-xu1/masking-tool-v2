@@ -40,7 +40,18 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+- Scope states supported extensions: `.txt`, `.csv`, `.log`, `.docx`, `.xlsx`,
+  `.pptx`, and text-based `.pdf`; image text, scanned PDFs, embedded objects,
+  and OCR are explicitly out of scope unless the constitution is amended.
+- Replacement source is `機密情報検出結果.xlsx` with `No`, `検出語句`, and
+  `置換提案`; implementation is deterministic and does not preserve reversible
+  mappings in output files.
+- File or folder selection flow is defined, including how unsupported or failed
+  files are recorded in `skipped_unsupported.txt`.
+- Python version and format-specific libraries/APIs are identified; binary
+  Office/PDF files are not modified by raw string replacement.
+- Test plan includes fixture files for every supported extension, unsupported
+  extensions, empty/no-match inputs, and skip-report validation.
 
 ## Project Structure
 
