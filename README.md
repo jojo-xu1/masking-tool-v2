@@ -32,6 +32,8 @@ python -m pip install -e .[test]
 python -m masking_tool
 ```
 
+User-facing operation steps are available in `docs/user-guide.md`.
+
 The UI asks for:
 1. replacement table
 2. input file or folder
