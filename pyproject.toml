@@ -16,9 +16,14 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=8"]
+build = ["pyinstaller>=6.0"]
 
 [project.scripts]
 masking-tool = "masking_tool.__main__:main"
+
+[tool.masking-tool]
+app-title = "Masking Tool"
+executable-name = "MaskingTool.exe"
 
 [tool.setuptools.packages.find]
 where = ["src"]

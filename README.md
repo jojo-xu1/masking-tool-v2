@@ -47,6 +47,31 @@ Original files are not overwritten. Replaced files and
 python -m pytest
 ```
 
+## Build Windows exe
+
+Install the build extra, then run the packaging script from the repository root:
+
+```powershell
+python -m pip install -e .[test,build]
+.\packaging\build_exe.ps1
+```
+
+Expected artifact:
+
+```text
+dist\MaskingTool.exe
+```
+
+Packaged smoke tests use two modes:
+- normal test mode skips packaged checks when `dist\MaskingTool.exe` is absent
+- distribution verification mode fails when `dist\MaskingTool.exe` is absent
+
+Before distributing the exe, complete
+`packaging\distribution-checklist.md`. The checklist records replacement-table
+loading, file type detection, every supported extension, unsupported extensions,
+no-match inputs, `skipped_unsupported.txt`, PDF Japanese readability, and UI/exe
+timing measurements.
+
 ## Limitations
 
 PDF handling is limited to files with an extractable text layer. Scanned PDFs,
