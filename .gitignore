@@ -18,6 +18,7 @@ warn-*.txt
 .DS_Store
 Thumbs.db
 *.tmp
+.tmp/
 *.swp
 .vscode/
 .idea/

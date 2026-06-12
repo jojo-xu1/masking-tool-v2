@@ -10,13 +10,18 @@ REPORT_NAME = "skipped_unsupported.txt"
 def entries_from_results(results: list[ProcessingResult]) -> list[SkipReportEntry]:
     entries: list[SkipReportEntry] = []
     for result in results:
-        if result.status not in {ResultStatus.SKIPPED_UNSUPPORTED, ResultStatus.FAILED}:
+        if result.status in {ResultStatus.SKIPPED_UNSUPPORTED, ResultStatus.FAILED}:
+            reason = "; ".join(result.messages) or result.target.reason or result.status.value
+            status = result.status.value
+        elif result.messages:
+            reason = "; ".join(result.messages)
+            status = ResultStatus.SKIPPED_UNSUPPORTED.value
+        else:
             continue
-        reason = "; ".join(result.messages) or result.target.reason or result.status.value
         entries.append(
             SkipReportEntry(
                 relative_path=_stable_path(result.target.relative_path),
-                status=result.status.value,
+                status=status,
                 reason=reason,
             )
         )
