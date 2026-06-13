@@ -12,6 +12,11 @@ from tests.fixtures.create_fixtures import (
     create_split_run_docx,
     create_split_run_pptx,
 )
+from tests.fixtures.create_replacement_layout_samples import (
+    LAYOUT_REPL_1,
+    create_layout_diagram_pptx,
+    create_layout_replacement_table,
+)
 
 
 def test_docx_split_run_paragraph_replacement_uses_first_run_format_and_count(tmp_path):
@@ -90,9 +95,24 @@ def test_no_match_split_run_adjacent_office_files_do_not_report_replacement(tmp_
     assert pptx_summary.results[0].replacement_count == 0
 
 
+def test_pptx_layout_replacement_keeps_split_run_replacement_behavior_available(tmp_path):
+    table = create_layout_replacement_table(tmp_path / "機密情報検出結果.xlsx")
+    source = create_layout_diagram_pptx(tmp_path / "layout.pptx")
+
+    summary = process_selection(table, InputSelection(InputMode.SINGLE_FILE, source, tmp_path / "out"))
+
+    assert summary.results[0].replacement_count == 4
+    assert LAYOUT_REPL_1 in _pptx_text(tmp_path / "out" / "layout.pptx")
+
+
 def _docx_run_containing(runs, text):
     return next(run for run in runs if text in run.text)
 
 
 def _pptx_run_containing(runs, text):
     return next(run for run in runs if text in run.text)
+
+
+def _pptx_text(path):
+    presentation = Presentation(str(path))
+    return "\n".join(shape.text for slide in presentation.slides for shape in slide.shapes if hasattr(shape, "text"))

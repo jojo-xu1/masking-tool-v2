@@ -6,16 +6,34 @@ from zipfile import BadZipFile, ZipFile
 
 from docx import Document
 from openpyxl import load_workbook
+from pptx.enum.text import MSO_AUTO_SIZE
 from pptx import Presentation
+from pptx.util import Pt as PptxPt
 
 from .models import ReplacementRule
 from .text_replacer import plan_replacements, replace_text
+
+LAYOUT_WARNING_PREFIX = "layout warning:"
+_EMU_PER_POINT = 12700
+_DEFAULT_PPTX_FONT_SIZE_PT = 12
+_MIN_READABLE_FONT_SIZE_PT = 7
+_LINE_HEIGHT_FACTOR = 1.2
+_ASCII_CHARACTER_WIDTH_FACTOR = 0.55
+_CJK_CHARACTER_WIDTH_FACTOR = 1.0
 
 
 @dataclass(frozen=True)
 class _TextSegment:
     text: str
     source_run: object
+
+
+@dataclass(frozen=True)
+class _PptxTextRegion:
+    text_frame: object
+    width: int
+    height: int
+    reference: str
 
 
 def replace_docx(source: str | Path, output: str | Path, rules: tuple[ReplacementRule, ...]) -> tuple[int, list[str]]:
@@ -55,20 +73,28 @@ def replace_xlsx(source: str | Path, output: str | Path, rules: tuple[Replacemen
 def replace_pptx(source: str | Path, output: str | Path, rules: tuple[ReplacementRule, ...]) -> tuple[int, list[str]]:
     presentation = Presentation(str(source))
     count = 0
-    for slide in presentation.slides:
+    messages: list[str] = []
+    source_name = Path(source).name
+    for slide_index, slide in enumerate(presentation.slides, start=1):
         for shape in slide.shapes:
             if getattr(shape, "has_text_frame", False):
-                for paragraph in shape.text_frame.paragraphs:
-                    count += _replace_pptx_runs(paragraph, rules)
+                region = _shape_text_region(shape)
+                replacements = _replace_pptx_region(region, rules)
+                count += replacements
+                if replacements and not _set_readable_text_frame_layout(region.text_frame, region.width, region.height):
+                    messages.append(_layout_warning(source_name, slide_index, region.reference))
             if getattr(shape, "has_table", False):
-                for row in shape.table.rows:
-                    for cell in row.cells:
-                        for paragraph in cell.text_frame.paragraphs:
-                            count += _replace_pptx_runs(paragraph, rules)
+                for row_index, row in enumerate(shape.table.rows):
+                    for column_index, cell in enumerate(row.cells):
+                        region = _table_cell_text_region(shape, row_index, column_index, cell)
+                        replacements = _replace_pptx_region(region, rules)
+                        count += replacements
+                        if replacements and not _set_readable_text_frame_layout(region.text_frame, region.width, region.height):
+                            messages.append(_layout_warning(source_name, slide_index, region.reference))
     output_path = Path(output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     presentation.save(str(output_path))
-    return count, embedded_object_notes(source)
+    return count, messages + embedded_object_notes(source)
 
 
 def embedded_object_notes(source: str | Path) -> list[str]:
@@ -89,6 +115,143 @@ def _replace_paragraph_runs(paragraph, rules: tuple[ReplacementRule, ...]) -> in
 
 def _replace_pptx_runs(paragraph, rules: tuple[ReplacementRule, ...]) -> int:
     return _replace_visible_run_text(paragraph, rules)
+
+
+def _replace_pptx_region(region: _PptxTextRegion, rules: tuple[ReplacementRule, ...]) -> int:
+    count = 0
+    for paragraph in region.text_frame.paragraphs:
+        count += _replace_pptx_runs(paragraph, rules)
+    return count
+
+
+def _shape_text_region(shape) -> _PptxTextRegion:
+    name = getattr(shape, "name", "") or "unnamed"
+    return _PptxTextRegion(
+        text_frame=shape.text_frame,
+        width=int(getattr(shape, "width", 0) or 0),
+        height=int(getattr(shape, "height", 0) or 0),
+        reference=f"shape '{name}'",
+    )
+
+
+def _table_cell_text_region(shape, row_index: int, column_index: int, cell) -> _PptxTextRegion:
+    table = shape.table
+    try:
+        width = int(table.columns[column_index].width)
+    except (AttributeError, IndexError, TypeError):
+        width = int(getattr(shape, "width", 0) or 0)
+    try:
+        height = int(table.rows[row_index].height)
+    except (AttributeError, IndexError, TypeError):
+        height = int(getattr(shape, "height", 0) or 0)
+    name = getattr(shape, "name", "") or "table"
+    return _PptxTextRegion(
+        text_frame=cell.text_frame,
+        width=width,
+        height=height,
+        reference=f"table '{name}' cell R{row_index + 1}C{column_index + 1}",
+    )
+
+
+def _layout_warning(source_name: str, slide_index: int, region_reference: str) -> str:
+    return (
+        f"{LAYOUT_WARNING_PREFIX} {source_name} slide {slide_index} {region_reference} "
+        "may need manual review because replacement text cannot be kept readable inside the original region"
+    )
+
+
+def _set_readable_text_frame_layout(text_frame, width: int, height: int) -> bool:
+    text_frame.word_wrap = True
+    text_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+    size_pt = _largest_readable_font_size(text_frame, width, height)
+    if size_pt is None:
+        _apply_pptx_font_size(text_frame, _MIN_READABLE_FONT_SIZE_PT)
+        return False
+    _apply_pptx_font_size(text_frame, size_pt)
+    return True
+
+
+def pptx_text_region_fits(text_frame, width: int, height: int) -> bool:
+    size_pt = _smallest_declared_font_size(text_frame) or _DEFAULT_PPTX_FONT_SIZE_PT
+    return _text_frame_fits_at_size(text_frame, width, height, size_pt)
+
+
+def _largest_readable_font_size(text_frame, width: int, height: int) -> int | None:
+    current_size = _largest_declared_font_size(text_frame) or _DEFAULT_PPTX_FONT_SIZE_PT
+    for size_pt in range(current_size, _MIN_READABLE_FONT_SIZE_PT - 1, -1):
+        if _text_frame_fits_at_size(text_frame, width, height, size_pt):
+            return size_pt
+    return None
+
+
+def _text_frame_fits_at_size(text_frame, width: int, height: int, size_pt: float) -> bool:
+    available_width = _available_text_width_pt(text_frame, width)
+    available_height = _available_text_height_pt(text_frame, height)
+    if available_width <= 0 or available_height <= 0:
+        return False
+
+    line_capacity = max(1.0, available_width / max(1.0, size_pt * _ASCII_CHARACTER_WIDTH_FACTOR))
+    estimated_lines = 0
+    for line in _text_frame_lines(text_frame):
+        weighted_length = sum(_character_width_units(character) for character in line)
+        estimated_lines += max(1, int((weighted_length + line_capacity - 1) // line_capacity))
+
+    required_height = estimated_lines * size_pt * _LINE_HEIGHT_FACTOR
+    return required_height <= available_height
+
+
+def _available_text_width_pt(text_frame, width: int) -> float:
+    margins = _length_to_pt(getattr(text_frame, "margin_left", 0)) + _length_to_pt(getattr(text_frame, "margin_right", 0))
+    return max(0.0, _length_to_pt(width) - margins)
+
+
+def _available_text_height_pt(text_frame, height: int) -> float:
+    margins = _length_to_pt(getattr(text_frame, "margin_top", 0)) + _length_to_pt(getattr(text_frame, "margin_bottom", 0))
+    return max(0.0, _length_to_pt(height) - margins)
+
+
+def _length_to_pt(value) -> float:
+    try:
+        return float(int(value)) / _EMU_PER_POINT
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _text_frame_lines(text_frame) -> list[str]:
+    lines: list[str] = []
+    for paragraph in text_frame.paragraphs:
+        text = "".join(run.text for run in paragraph.runs)
+        lines.extend(text.splitlines() or [text])
+    return [line for line in lines if line] or [""]
+
+
+def _character_width_units(character: str) -> float:
+    return _ASCII_CHARACTER_WIDTH_FACTOR if ord(character) < 128 else _CJK_CHARACTER_WIDTH_FACTOR
+
+
+def _apply_pptx_font_size(text_frame, size_pt: int) -> None:
+    for paragraph in text_frame.paragraphs:
+        for run in paragraph.runs:
+            run.font.size = PptxPt(size_pt)
+
+
+def _largest_declared_font_size(text_frame) -> int | None:
+    sizes = _declared_font_sizes(text_frame)
+    return max(sizes) if sizes else None
+
+
+def _smallest_declared_font_size(text_frame) -> int | None:
+    sizes = _declared_font_sizes(text_frame)
+    return min(sizes) if sizes else None
+
+
+def _declared_font_sizes(text_frame) -> list[int]:
+    sizes: list[int] = []
+    for paragraph in text_frame.paragraphs:
+        for run in paragraph.runs:
+            if run.font.size is not None:
+                sizes.append(round(_length_to_pt(run.font.size)))
+    return sizes
 
 
 def _replace_visible_run_text(paragraph, rules: tuple[ReplacementRule, ...]) -> int:

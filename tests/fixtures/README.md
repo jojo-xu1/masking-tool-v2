@@ -8,6 +8,9 @@ They generate:
 - `.docx`, `.xlsx`, `.pptx`
 - split-run `.docx` and `.pptx` samples where `Technologies, Inc.` is stored
   across Office text runs
+- replacement-layout `.pptx` samples with screenshot-style diagram text,
+  constrained text boxes, table cells, overflow warning regions, and mixed
+  readable-plus-warning regions
 - Unicode width normalization samples where full-width ASCII-compatible
   `検出語句` values match half-width targets, and half-width `検出語句` values
   match full-width targets
@@ -36,3 +39,14 @@ python -m tests.fixtures.create_unicode_normalization_samples
 Generated Unicode samples are written under
 `tests/fixtures/inputs/unicode_normalization_samples/`, with replacement table
 `tests/fixtures/replacement_tables/機密情報検出結果_unicode_width.xlsx`.
+
+Replacement layout tests use in-test generated fixtures from:
+
+```powershell
+python -m tests.fixtures.create_replacement_layout_samples
+```
+
+The helper module exposes fixture builders for readable diagram/text-box/table
+cell cases and intentionally unreadable overflow cases. Tests create these
+files under their temporary directories instead of committing generated binary
+fixtures.

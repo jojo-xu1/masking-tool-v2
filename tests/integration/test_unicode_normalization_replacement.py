@@ -19,6 +19,10 @@ from tests.fixtures.create_fixtures import (
     create_text_pdf,
     create_xlsx,
 )
+from tests.fixtures.create_replacement_layout_samples import (
+    create_layout_diagram_pptx,
+    create_layout_replacement_table,
+)
 
 
 def test_text_formats_full_width_rule_masks_half_width_targets(tmp_path):
@@ -128,6 +132,18 @@ def test_exact_raw_match_precedence_and_replacement_proposal_preservation(tmp_pa
 
     output_text = (tmp_path / "out" / "input.txt").read_text(encoding="utf-8")
     assert output_text == f"東京本社 {UNICODE_FULL_WIDTH_REPL} 完了"
+
+
+def test_pptx_layout_replacement_preserves_cjk_width_labels_and_table_schema(tmp_path):
+    table = create_layout_replacement_table(tmp_path / "機密情報検出結果.xlsx")
+    source = create_layout_diagram_pptx(tmp_path / "layout.pptx")
+
+    summary = process_selection(table, InputSelection(InputMode.SINGLE_FILE, source, tmp_path / "out"))
+
+    output_text = _pptx_text(tmp_path / "out" / "layout.pptx")
+    assert summary.results[0].replacement_count == 4
+    assert "担当者A" not in output_text
+    assert "担当者〇1" in output_text
 
 
 def _docx_text(path):
