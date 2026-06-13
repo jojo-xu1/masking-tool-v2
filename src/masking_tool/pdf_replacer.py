@@ -5,6 +5,7 @@ from pathlib import Path
 import fitz
 
 from .models import ReplacementRule
+from .text_replacer import plan_replacements
 
 
 class ExcludedPdfError(RuntimeError):
@@ -22,12 +23,10 @@ def replace_pdf(source: str | Path, output: str | Path, rules: tuple[Replacement
         total = 0
         for page in document:
             insertions: list[tuple[fitz.Rect, str]] = []
-            for rule in rules:
-                matches = page.search_for(rule.detected_phrase)
-                for rect in matches:
-                    page.add_redact_annot(rect, fill=(1, 1, 1), cross_out=False)
-                    insertions.append((rect, rule.replacement_proposal))
-                total += len(matches)
+            for rect, replacement_text, count in _page_replacements(page, rules):
+                page.add_redact_annot(rect, fill=(1, 1, 1), cross_out=False)
+                insertions.append((rect, replacement_text))
+                total += count
             if page.first_annot:
                 page.apply_redactions()
             for rect, text in insertions:
@@ -42,6 +41,42 @@ def replace_pdf(source: str | Path, output: str | Path, rules: tuple[Replacement
 
 def _has_text_layer(document) -> bool:
     return any(page.get_text("text").strip() for page in document)
+
+
+def _page_replacements(page, rules: tuple[ReplacementRule, ...]) -> list[tuple[fitz.Rect, str, int]]:
+    replacements: list[tuple[fitz.Rect, str, int]] = []
+    for span in _text_spans(page):
+        replaced_text, count = _replace_span_text(span["text"], rules)
+        if count:
+            replacements.append((fitz.Rect(span["bbox"]), replaced_text, count))
+    return replacements
+
+
+def _text_spans(page) -> list[dict]:
+    spans: list[dict] = []
+    page_dict = page.get_text("dict")
+    for block in page_dict.get("blocks", []):
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                text = span.get("text", "")
+                if text:
+                    spans.append(span)
+    return spans
+
+
+def _replace_span_text(text: str, rules: tuple[ReplacementRule, ...]) -> tuple[str, int]:
+    matches = plan_replacements(text, rules)
+    if not matches:
+        return text, 0
+
+    parts: list[str] = []
+    cursor = 0
+    for match in matches:
+        parts.append(text[cursor : match.start])
+        parts.append(match.replacement)
+        cursor = match.end
+    parts.append(text[cursor:])
+    return "".join(parts), len(matches)
 
 
 def _insert_replacement_text(page, rect: fitz.Rect, text: str) -> None:

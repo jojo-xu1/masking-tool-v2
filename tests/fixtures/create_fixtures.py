@@ -13,9 +13,13 @@ from pptx.util import Pt as PptxPt
 PHRASE_1 = "山田太郎"
 PHRASE_2 = "example@example.com"
 SPLIT_PHRASE = "Technologies, Inc."
+UNICODE_HALF_WIDTH_PHRASE = "Technologies, Inc."
+UNICODE_FULL_WIDTH_PHRASE = "Ｔｅｃｈｎｏｌｏｇｉｅｓ， Ｉｎｃ．"
 REPL_1 = "<PERSON_001>"
 REPL_2 = "<EMAIL_001>"
 SPLIT_REPL = "会社名_置換済み"
+UNICODE_REPL = "会社名_置換済み"
+UNICODE_FULL_WIDTH_REPL = "Ｃｏｍｐａｎｙ　Ａ"
 
 
 def create_replacement_table(path: Path, rows: list[tuple[object, str, str]] | None = None) -> Path:
@@ -106,7 +110,7 @@ def create_split_run_pptx(path: Path, *, in_table: bool = False, text: str | Non
 def create_text_pdf(path: Path, text: str | None = None) -> Path:
     doc = fitz.open()
     page = doc.new_page()
-    page.insert_text((72, 72), text if text is not None else PHRASE_2)
+    page.insert_text((72, 72), text if text is not None else PHRASE_2, fontname="japan")
     path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(path)
     doc.close()

@@ -9,7 +9,7 @@ from openpyxl import load_workbook
 from pptx import Presentation
 
 from .models import ReplacementRule
-from .text_replacer import replace_text
+from .text_replacer import plan_replacements, replace_text
 
 
 @dataclass(frozen=True)
@@ -97,41 +97,21 @@ def _replace_visible_run_text(paragraph, rules: tuple[ReplacementRule, ...]) -> 
     if not segments:
         return 0
 
-    count = 0
-    for rule in rules:
-        segments, replacements = _replace_segments(segments, rule)
-        count += replacements
-
-    if count:
-        _write_segments(paragraph, segments)
-    return count
-
-
-def _replace_segments(
-    segments: list[_TextSegment],
-    rule: ReplacementRule,
-) -> tuple[list[_TextSegment], int]:
     visible_text = "".join(segment.text for segment in segments)
-    phrase = rule.detected_phrase
-    if phrase not in visible_text:
-        return segments, 0
+    matches = plan_replacements(visible_text, rules)
+    if not matches:
+        return 0
 
     next_segments: list[_TextSegment] = []
-    count = 0
     cursor = 0
-    while True:
-        match_start = visible_text.find(phrase, cursor)
-        if match_start == -1:
-            next_segments.extend(_slice_segments(segments, cursor, len(visible_text)))
-            break
-
-        next_segments.extend(_slice_segments(segments, cursor, match_start))
-        first_run = _run_at(segments, match_start)
-        next_segments.append(_TextSegment(rule.replacement_proposal, first_run))
-        cursor = match_start + len(phrase)
-        count += 1
-
-    return next_segments, count
+    for match in matches:
+        next_segments.extend(_slice_segments(segments, cursor, match.start))
+        first_run = _run_at(segments, match.start)
+        next_segments.append(_TextSegment(match.replacement, first_run))
+        cursor = match.end
+    next_segments.extend(_slice_segments(segments, cursor, len(visible_text)))
+    _write_segments(paragraph, next_segments)
+    return len(matches)
 
 
 def _slice_segments(segments: list[_TextSegment], start: int, end: int) -> list[_TextSegment]:

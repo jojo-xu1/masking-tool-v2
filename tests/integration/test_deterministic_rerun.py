@@ -8,6 +8,9 @@ from masking_tool.models import InputMode, InputSelection, TraversalMode
 from tests.fixtures.create_fixtures import (
     SPLIT_PHRASE,
     SPLIT_REPL,
+    UNICODE_FULL_WIDTH_PHRASE,
+    UNICODE_HALF_WIDTH_PHRASE,
+    UNICODE_REPL,
     create_replacement_table,
     create_split_run_docx,
     create_split_run_pptx,
@@ -42,6 +45,19 @@ def test_deterministic_rerun_split_run_office_outputs_and_counts(tmp_path):
     assert first_pptx.results[0].replacement_count == second_pptx.results[0].replacement_count == 1
     assert _docx_text(tmp_path / "out1-docx" / "sample.docx") == _docx_text(tmp_path / "out2-docx" / "sample.docx")
     assert _pptx_text(tmp_path / "out1-pptx" / "sample.pptx") == _pptx_text(tmp_path / "out2-pptx" / "sample.pptx")
+
+
+def test_deterministic_rerun_unicode_width_outputs_and_counts(tmp_path):
+    table = create_replacement_table(tmp_path / "機密情報検出結果.xlsx", [(1, UNICODE_FULL_WIDTH_PHRASE, UNICODE_REPL)])
+    source = create_text_file(tmp_path / "unicode.txt", f"取引先: {UNICODE_HALF_WIDTH_PHRASE}")
+
+    first = process_selection(table, InputSelection(InputMode.SINGLE_FILE, source, tmp_path / "out1"))
+    second = process_selection(table, InputSelection(InputMode.SINGLE_FILE, source, tmp_path / "out2"))
+
+    assert first.results[0].replacement_count == second.results[0].replacement_count == 1
+    assert (tmp_path / "out1" / "unicode.txt").read_text(encoding="utf-8") == (
+        tmp_path / "out2" / "unicode.txt"
+    ).read_text(encoding="utf-8")
 
 
 def _docx_text(path):
