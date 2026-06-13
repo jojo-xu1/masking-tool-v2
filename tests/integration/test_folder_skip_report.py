@@ -9,6 +9,10 @@ from tests.fixtures.create_fixtures import (
     create_replacement_table,
     create_text_file,
 )
+from tests.fixtures.create_replacement_layout_samples import (
+    create_layout_overflow_pptx,
+    create_layout_replacement_table,
+)
 
 
 def test_folder_records_unsupported_extensions(tmp_path):
@@ -44,3 +48,18 @@ def test_folder_skip_report_with_unicode_width_fixture_and_unsupported_file(tmp_
     assert summary.skipped_unsupported_count == 1
     assert UNICODE_REPL in output_text
     assert "unsupported.bin\tskipped_unsupported\tunsupported extension .bin" in report
+
+
+def test_folder_skip_report_records_pptx_layout_warning(tmp_path):
+    table = create_layout_replacement_table(tmp_path / "機密情報検出結果.xlsx")
+    folder = tmp_path / "in"
+    create_layout_overflow_pptx(folder / "overflow.pptx")
+
+    summary = process_selection(
+        table,
+        InputSelection(InputMode.FOLDER, folder, tmp_path / "out", TraversalMode.DIRECT_CHILDREN),
+    )
+
+    report = summary.report_path.read_text(encoding="utf-8")
+    assert summary.replaced_count == 1
+    assert "overflow.pptx\tskipped_unsupported\tlayout warning:" in report

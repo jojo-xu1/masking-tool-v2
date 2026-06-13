@@ -1,5 +1,5 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read:
-specs/005-unicode-normalization-matching/plan.md
+specs/006-replacement-text-overlap/plan.md
 <!-- SPECKIT END -->

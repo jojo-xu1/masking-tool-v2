@@ -16,6 +16,10 @@ from tests.fixtures.create_fixtures import (
     create_split_run_pptx,
     create_text_file,
 )
+from tests.fixtures.create_replacement_layout_samples import (
+    create_layout_overflow_pptx,
+    create_layout_replacement_table,
+)
 
 
 def test_deterministic_rerun_outputs_and_reports(tmp_path):
@@ -58,6 +62,18 @@ def test_deterministic_rerun_unicode_width_outputs_and_counts(tmp_path):
     assert (tmp_path / "out1" / "unicode.txt").read_text(encoding="utf-8") == (
         tmp_path / "out2" / "unicode.txt"
     ).read_text(encoding="utf-8")
+
+
+def test_deterministic_rerun_layout_warnings_and_outputs(tmp_path):
+    table = create_layout_replacement_table(tmp_path / "機密情報検出結果.xlsx")
+    source = create_layout_overflow_pptx(tmp_path / "overflow.pptx")
+
+    first = process_selection(table, InputSelection(InputMode.SINGLE_FILE, source, tmp_path / "out1"))
+    second = process_selection(table, InputSelection(InputMode.SINGLE_FILE, source, tmp_path / "out2"))
+
+    assert first.results[0].replacement_count == second.results[0].replacement_count == 1
+    assert first.results[0].messages == second.results[0].messages
+    assert _pptx_text(tmp_path / "out1" / "overflow.pptx") == _pptx_text(tmp_path / "out2" / "overflow.pptx")
 
 
 def _docx_text(path):
