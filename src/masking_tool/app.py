@@ -95,7 +95,7 @@ def _dispatch_replace(source: Path, output: Path, extension: str, rules) -> tupl
     if extension == ".pptx":
         return replace_pptx(source, output, rules)
     if extension == ".pdf":
-        return replace_pdf(source, output, rules), []
+        return replace_pdf(source, output, rules)
     return 0, [f"unsupported extension {extension}"]
 
 
