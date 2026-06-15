@@ -12,6 +12,8 @@ PDF_LONG_PHRASE = "PDF-LONG-SOURCE-PLACEHOLDER"
 PDF_LONG_REPL = "PDF-LONG-MASKED-LABEL"
 PDF_OVERFLOW_PHRASE = "PDF-OVERFLOW"
 PDF_OVERFLOW_REPL = "MASKED-LABEL-NEEDS-MANUAL-REVIEW"
+PDF_SCALED_PHRASE = "PDF-SCALED-SOURCE"
+PDF_SCALED_REPL = "PDF-SCALED-MASKED"
 PDF_JAPANESE_PHRASE = "03-1234-5678"
 PDF_JAPANESE_REPL = "電話番号_置換済み"
 PDF_FIT_FONT_SIZE = 6
@@ -22,7 +24,8 @@ PDF_TEXTBOX_ROWS = [
     (1, PDF_FIT_PHRASE, PDF_FIT_REPL),
     (2, PDF_LONG_PHRASE, PDF_LONG_REPL),
     (3, PDF_OVERFLOW_PHRASE, PDF_OVERFLOW_REPL),
-    (4, PDF_JAPANESE_PHRASE, PDF_JAPANESE_REPL),
+    (4, PDF_SCALED_PHRASE, PDF_SCALED_REPL),
+    (5, PDF_JAPANESE_PHRASE, PDF_JAPANESE_REPL),
 ]
 
 ROOT = Path(__file__).resolve().parent
@@ -44,6 +47,23 @@ def create_pdf_long_fit_sample(path: Path) -> Path:
 
 def create_pdf_overflow_sample(path: Path) -> Path:
     return _create_pdf(path, [(fitz.Point(42, 54), PDF_OVERFLOW_PHRASE, PDF_FIT_FONT_SIZE)])
+
+
+def create_pdf_scaled_sample(path: Path) -> Path:
+    document = fitz.open()
+    page = document.new_page(width=PDF_PAGE_WIDTH, height=PDF_PAGE_HEIGHT)
+    point = fitz.Point(42, 54)
+    page.insert_text(
+        point,
+        PDF_SCALED_PHRASE,
+        fontname="japan",
+        fontsize=PDF_FIT_FONT_SIZE * 2,
+        morph=(point, fitz.Matrix(1, 0.5)),
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    document.save(path)
+    document.close()
+    return path
 
 
 def create_pdf_mixed_sample(path: Path) -> Path:
@@ -76,6 +96,7 @@ def create_pdf_textbox_fit_inputs() -> None:
     create_pdf_fit_sample(INPUT_DIR / "pdf_fit.pdf")
     create_pdf_long_fit_sample(INPUT_DIR / "pdf_long_fit.pdf")
     create_pdf_overflow_sample(INPUT_DIR / "pdf_overflow.pdf")
+    create_pdf_scaled_sample(INPUT_DIR / "pdf_scaled.pdf")
     create_pdf_mixed_sample(INPUT_DIR / "pdf_mixed.pdf")
     create_pdf_japanese_sample(INPUT_DIR / "pdf_japanese.pdf")
 

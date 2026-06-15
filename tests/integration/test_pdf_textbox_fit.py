@@ -13,10 +13,13 @@ from tests.fixtures.create_pdf_textbox_fit_samples import (
     PDF_LONG_REPL,
     PDF_OVERFLOW_PHRASE,
     PDF_OVERFLOW_REPL,
+    PDF_SCALED_PHRASE,
+    PDF_SCALED_REPL,
     create_pdf_fit_sample,
     create_pdf_long_fit_sample,
     create_pdf_mixed_sample,
     create_pdf_overflow_sample,
+    create_pdf_scaled_sample,
     create_pdf_textbox_fit_table,
 )
 
@@ -51,6 +54,22 @@ def test_longer_pdf_replacement_preserves_original_font_size_when_it_fits(tmp_pa
     assert _span_size_for(output, PDF_LONG_REPL) == PDF_FIT_FONT_SIZE
 
 
+def test_scaled_pdf_replacement_does_not_use_larger_nominal_font_size(tmp_path):
+    table = create_pdf_textbox_fit_table(tmp_path / "機密情報検出結果.xlsx")
+    source = create_pdf_scaled_sample(tmp_path / "scaled.pdf")
+
+    summary = process_selection(table, InputSelection(InputMode.SINGLE_FILE, source, tmp_path / "out"))
+
+    output = tmp_path / "out" / "scaled.pdf"
+    text = _pdf_text(output)
+    assert summary.results[0].replacement_count == 1
+    assert not summary.results[0].messages
+    assert PDF_SCALED_PHRASE not in text
+    assert PDF_SCALED_REPL in text
+    assert _span_size_for(source, PDF_SCALED_PHRASE) > PDF_FIT_FONT_SIZE
+    assert _span_size_for(output, PDF_SCALED_REPL) == PDF_FIT_FONT_SIZE
+
+
 def test_overflow_pdf_replacement_applies_replacement_and_records_warning(tmp_path):
     table = create_pdf_textbox_fit_table(tmp_path / "機密情報検出結果.xlsx")
     source = create_pdf_overflow_sample(tmp_path / "overflow.pdf")
@@ -64,6 +83,7 @@ def test_overflow_pdf_replacement_applies_replacement_and_records_warning(tmp_pa
     assert any(message.startswith(PDF_LAYOUT_WARNING_PREFIX) for message in summary.results[0].messages)
     assert PDF_OVERFLOW_PHRASE not in _pdf_text(output)
     assert PDF_OVERFLOW_REPL in _pdf_text(output)
+    assert _span_size_for(output, PDF_OVERFLOW_REPL) < PDF_FIT_FONT_SIZE
     assert "overflow.pdf\tskipped_unsupported\tpdf layout warning:" in report
 
 
@@ -83,6 +103,7 @@ def test_mixed_pdf_regions_keep_fit_safe_replacement_successful_when_another_reg
     assert PDF_FIT_REPL in text
     assert PDF_OVERFLOW_REPL in text
     assert _span_size_for(output, PDF_FIT_REPL) == PDF_FIT_FONT_SIZE
+    assert _span_size_for(output, PDF_OVERFLOW_REPL) < PDF_FIT_FONT_SIZE
 
 
 def test_folder_skip_report_records_pdf_layout_warning(tmp_path):

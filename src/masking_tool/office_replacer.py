@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
@@ -163,41 +164,54 @@ def _layout_warning(source_name: str, slide_index: int, region_reference: str) -
 def _set_readable_text_frame_layout(text_frame, width: int, height: int) -> bool:
     text_frame.word_wrap = True
     text_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
-    size_pt = _largest_readable_font_size(text_frame, width, height)
-    if size_pt is None:
-        _apply_pptx_font_size(text_frame, _MIN_READABLE_FONT_SIZE_PT)
+    if _text_frame_fits_at_scale(text_frame, width, height, 1.0):
+        return True
+
+    scale = _largest_readable_font_scale(text_frame, width, height)
+    if scale is None:
+        _apply_pptx_font_scale(text_frame, _minimum_font_scale(text_frame))
         return False
-    _apply_pptx_font_size(text_frame, size_pt)
+    _apply_pptx_font_scale(text_frame, scale)
     return True
 
 
 def pptx_text_region_fits(text_frame, width: int, height: int) -> bool:
-    size_pt = _smallest_declared_font_size(text_frame) or _DEFAULT_PPTX_FONT_SIZE_PT
-    return _text_frame_fits_at_size(text_frame, width, height, size_pt)
+    return _text_frame_fits_at_scale(text_frame, width, height, 1.0)
 
 
-def _largest_readable_font_size(text_frame, width: int, height: int) -> int | None:
-    current_size = _largest_declared_font_size(text_frame) or _DEFAULT_PPTX_FONT_SIZE_PT
-    for size_pt in range(current_size, _MIN_READABLE_FONT_SIZE_PT - 1, -1):
-        if _text_frame_fits_at_size(text_frame, width, height, size_pt):
-            return size_pt
+def _largest_readable_font_scale(text_frame, width: int, height: int) -> float | None:
+    minimum_scale = _minimum_font_scale(text_frame)
+    for percent in range(99, int(minimum_scale * 100) - 1, -1):
+        scale = percent / 100
+        if _text_frame_fits_at_scale(text_frame, width, height, scale):
+            return scale
     return None
 
 
-def _text_frame_fits_at_size(text_frame, width: int, height: int, size_pt: float) -> bool:
+def _minimum_font_scale(text_frame) -> float:
+    largest = _largest_declared_font_size(text_frame) or _DEFAULT_PPTX_FONT_SIZE_PT
+    return min(1.0, _MIN_READABLE_FONT_SIZE_PT / max(1.0, largest))
+
+
+def _text_frame_fits_at_scale(text_frame, width: int, height: int, scale: float) -> bool:
     available_width = _available_text_width_pt(text_frame, width)
     available_height = _available_text_height_pt(text_frame, height)
     if available_width <= 0 or available_height <= 0:
         return False
 
-    line_capacity = max(1.0, available_width / max(1.0, size_pt * _ASCII_CHARACTER_WIDTH_FACTOR))
     estimated_lines = 0
-    for line in _text_frame_lines(text_frame):
-        weighted_length = sum(_character_width_units(character) for character in line)
-        estimated_lines += max(1, int((weighted_length + line_capacity - 1) // line_capacity))
+    required_height = 0.0
+    for line in _text_frame_line_runs(text_frame, scale):
+        line_width = 0.0
+        line_height = 0.0
+        for text, size_pt in line:
+            line_width += sum(_character_width_units(character) * size_pt for character in text)
+            line_height = max(line_height, size_pt)
+        wrapped_lines = max(1, math.ceil(line_width / available_width))
+        estimated_lines += wrapped_lines
+        required_height += wrapped_lines * max(1.0, line_height) * _LINE_HEIGHT_FACTOR
 
-    required_height = estimated_lines * size_pt * _LINE_HEIGHT_FACTOR
-    return required_height <= available_height
+    return estimated_lines > 0 and required_height <= available_height
 
 
 def _available_text_width_pt(text_frame, width: int) -> float:
@@ -217,12 +231,23 @@ def _length_to_pt(value) -> float:
         return 0.0
 
 
-def _text_frame_lines(text_frame) -> list[str]:
-    lines: list[str] = []
+def _text_frame_line_runs(text_frame, scale: float) -> list[list[tuple[str, float]]]:
+    lines: list[list[tuple[str, float]]] = []
     for paragraph in text_frame.paragraphs:
-        text = "".join(run.text for run in paragraph.runs)
-        lines.extend(text.splitlines() or [text])
-    return [line for line in lines if line] or [""]
+        current_line: list[tuple[str, float]] = []
+        for run in paragraph.runs:
+            size_pt = _scaled_run_font_size_pt(run, scale)
+            parts = run.text.splitlines()
+            if not parts:
+                continue
+            for index, part in enumerate(parts):
+                if index:
+                    lines.append(current_line)
+                    current_line = []
+                if part:
+                    current_line.append((part, size_pt))
+        lines.append(current_line)
+    return lines or [[("", _DEFAULT_PPTX_FONT_SIZE_PT)]]
 
 
 def _character_width_units(character: str) -> float:
@@ -233,6 +258,25 @@ def _apply_pptx_font_size(text_frame, size_pt: int) -> None:
     for paragraph in text_frame.paragraphs:
         for run in paragraph.runs:
             run.font.size = PptxPt(size_pt)
+
+
+def _apply_pptx_font_scale(text_frame, scale: float) -> None:
+    for paragraph in text_frame.paragraphs:
+        for run in paragraph.runs:
+            run.font.size = PptxPt(_scaled_run_font_size_pt(run, scale))
+
+
+def _scaled_run_font_size_pt(run, scale: float) -> int:
+    size_pt = _run_font_size_pt(run)
+    if scale >= 1.0:
+        return size_pt
+    return max(_MIN_READABLE_FONT_SIZE_PT, int(size_pt * scale))
+
+
+def _run_font_size_pt(run) -> int:
+    if run.font.size is None:
+        return _DEFAULT_PPTX_FONT_SIZE_PT
+    return round(_length_to_pt(run.font.size))
 
 
 def _largest_declared_font_size(text_frame) -> int | None:

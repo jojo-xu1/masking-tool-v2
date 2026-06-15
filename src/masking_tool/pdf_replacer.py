@@ -10,8 +10,11 @@ from .text_replacer import plan_replacements
 
 PDF_LAYOUT_WARNING_PREFIX = "pdf layout warning:"
 _DEFAULT_PDF_FONT_SIZE = 10.0
+_MIN_PDF_FONT_SIZE = 3.0
 _MIN_REGION_WIDTH = 1.0
+_MIN_FONT_METRIC_SPAN = 0.1
 _TEXT_WIDTH_TOLERANCE = 1.02
+_TEXT_FIT_PADDING = 0.96
 _FONT_CANDIDATES = ("japan", "china-s", "helv")
 
 
@@ -40,18 +43,18 @@ def replace_pdf(source: str | Path, output: str | Path, rules: tuple[Replacement
         total = 0
         messages: list[str] = []
         for page_index, page in enumerate(document, start=1):
-            insertions: list[tuple[_PdfTextRegion, bool]] = []
+            insertions: list[tuple[_PdfTextRegion, float]] = []
             for region in _text_regions(page, rules):
                 fits = _replacement_fits(region)
                 if not fits:
                     messages.append(_layout_warning(source_path.name, page_index, region.bounds))
                 page.add_redact_annot(region.bounds, fill=(1, 1, 1), cross_out=False)
-                insertions.append((region, fits))
+                insertions.append((region, _replacement_font_size(region)))
                 total += region.replacement_count
             if page.first_annot:
                 page.apply_redactions()
-            for region, fits in insertions:
-                _insert_replacement_text(page, region, fits)
+            for region, font_size in insertions:
+                _insert_replacement_text(page, region, font_size)
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         document.save(output_path)
@@ -74,7 +77,7 @@ def _text_regions(page, rules: tuple[ReplacementRule, ...]) -> list[_PdfTextRegi
                     bounds=fitz.Rect(span["bbox"]),
                     original_text=span["text"],
                     replacement_text=replaced_text,
-                    font_size=float(span.get("size") or _DEFAULT_PDF_FONT_SIZE),
+                    font_size=_visible_font_size(span),
                     fontname=str(span.get("font") or ""),
                     replacement_count=count,
                 )
@@ -92,6 +95,17 @@ def _text_spans(page) -> list[dict]:
                 if text:
                     spans.append(span)
     return spans
+
+
+def _visible_font_size(span: dict) -> float:
+    nominal_size = float(span.get("size") or _DEFAULT_PDF_FONT_SIZE)
+    bounds = fitz.Rect(span["bbox"])
+    metric_span = max(
+        _MIN_FONT_METRIC_SPAN,
+        float(span.get("ascender", 1.0)) - float(span.get("descender", -0.2)),
+    )
+    visible_size = bounds.height / metric_span
+    return min(nominal_size, visible_size)
 
 
 def _replace_span_text(text: str, rules: tuple[ReplacementRule, ...]) -> tuple[str, int]:
@@ -114,6 +128,15 @@ def _replacement_fits(region: _PdfTextRegion) -> bool:
     return _replacement_width(region.replacement_text, region.font_size) <= width * _TEXT_WIDTH_TOLERANCE
 
 
+def _replacement_font_size(region: _PdfTextRegion) -> float:
+    width = max(_MIN_REGION_WIDTH, region.bounds.width)
+    text_width = _replacement_width(region.replacement_text, region.font_size)
+    if text_width <= width * _TEXT_WIDTH_TOLERANCE:
+        return region.font_size
+    scaled_size = region.font_size * width / max(_MIN_REGION_WIDTH, text_width) * _TEXT_FIT_PADDING
+    return max(_MIN_PDF_FONT_SIZE, min(region.font_size, scaled_size))
+
+
 def _replacement_width(text: str, font_size: float) -> float:
     for fontname in _FONT_CANDIDATES:
         try:
@@ -131,30 +154,29 @@ def _layout_warning(source_name: str, page_number: int, bounds: fitz.Rect) -> st
     )
 
 
-def _insert_replacement_text(page, region: _PdfTextRegion, fits: bool) -> None:
+def _insert_replacement_text(page, region: _PdfTextRegion, font_size: float) -> None:
     target = fitz.Rect(region.bounds)
-    if fits:
-        for fontname in _FONT_CANDIDATES:
-            try:
-                remaining = page.insert_textbox(
-                    target,
-                    region.replacement_text,
-                    fontname=fontname,
-                    fontsize=region.font_size,
-                    color=(0, 0, 0),
-                    overlay=True,
-                )
-            except Exception:
-                continue
-            if remaining >= 0:
-                return
+    for fontname in _FONT_CANDIDATES:
+        try:
+            remaining = page.insert_textbox(
+                target,
+                region.replacement_text,
+                fontname=fontname,
+                fontsize=font_size,
+                color=(0, 0, 0),
+                overlay=True,
+            )
+        except Exception:
+            continue
+        if remaining >= 0:
+            return
     for fontname in _FONT_CANDIDATES:
         try:
             page.insert_text(
                 target.bl,
                 region.replacement_text,
                 fontname=fontname,
-                fontsize=region.font_size,
+                fontsize=font_size,
                 color=(0, 0, 0),
                 overlay=True,
             )
