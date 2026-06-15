@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from masking_tool.app import process_selection
 from masking_tool.models import InputMode, InputSelection, TraversalMode
+from masking_tool.pdf_replacer import PDF_LAYOUT_WARNING_PREFIX
 from tests.fixtures.create_fixtures import (
     UNICODE_FULL_WIDTH_PHRASE,
     UNICODE_HALF_WIDTH_PHRASE,
@@ -13,6 +14,7 @@ from tests.fixtures.create_replacement_layout_samples import (
     create_layout_overflow_pptx,
     create_layout_replacement_table,
 )
+from tests.fixtures.create_pdf_textbox_fit_samples import create_pdf_overflow_sample, create_pdf_textbox_fit_table
 
 
 def test_folder_records_unsupported_extensions(tmp_path):
@@ -63,3 +65,18 @@ def test_folder_skip_report_records_pptx_layout_warning(tmp_path):
     report = summary.report_path.read_text(encoding="utf-8")
     assert summary.replaced_count == 1
     assert "overflow.pptx\tskipped_unsupported\tlayout warning:" in report
+
+
+def test_folder_skip_report_records_pdf_layout_warning(tmp_path):
+    table = create_pdf_textbox_fit_table(tmp_path / "機密情報検出結果.xlsx")
+    folder = tmp_path / "in"
+    create_pdf_overflow_sample(folder / "overflow.pdf")
+
+    summary = process_selection(
+        table,
+        InputSelection(InputMode.FOLDER, folder, tmp_path / "out", TraversalMode.DIRECT_CHILDREN),
+    )
+
+    report = summary.report_path.read_text(encoding="utf-8")
+    assert summary.replaced_count == 1
+    assert f"overflow.pdf\tskipped_unsupported\t{PDF_LAYOUT_WARNING_PREFIX}" in report

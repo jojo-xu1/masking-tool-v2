@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fitz
 from docx import Document
 from pptx import Presentation
 
@@ -20,6 +21,7 @@ from tests.fixtures.create_replacement_layout_samples import (
     create_layout_overflow_pptx,
     create_layout_replacement_table,
 )
+from tests.fixtures.create_pdf_textbox_fit_samples import create_pdf_overflow_sample, create_pdf_textbox_fit_table
 
 
 def test_deterministic_rerun_outputs_and_reports(tmp_path):
@@ -76,6 +78,18 @@ def test_deterministic_rerun_layout_warnings_and_outputs(tmp_path):
     assert _pptx_text(tmp_path / "out1" / "overflow.pptx") == _pptx_text(tmp_path / "out2" / "overflow.pptx")
 
 
+def test_deterministic_rerun_pdf_layout_warnings_and_outputs(tmp_path):
+    table = create_pdf_textbox_fit_table(tmp_path / "機密情報検出結果.xlsx")
+    source = create_pdf_overflow_sample(tmp_path / "overflow.pdf")
+
+    first = process_selection(table, InputSelection(InputMode.SINGLE_FILE, source, tmp_path / "out1"))
+    second = process_selection(table, InputSelection(InputMode.SINGLE_FILE, source, tmp_path / "out2"))
+
+    assert first.results[0].replacement_count == second.results[0].replacement_count == 1
+    assert first.results[0].messages == second.results[0].messages
+    assert _pdf_text(tmp_path / "out1" / "overflow.pdf") == _pdf_text(tmp_path / "out2" / "overflow.pdf")
+
+
 def _docx_text(path):
     doc = Document(str(path))
     return "\n".join(paragraph.text for paragraph in doc.paragraphs)
@@ -84,3 +98,11 @@ def _docx_text(path):
 def _pptx_text(path):
     prs = Presentation(str(path))
     return "\n".join(shape.text for slide in prs.slides for shape in slide.shapes if hasattr(shape, "text"))
+
+
+def _pdf_text(path):
+    document = fitz.open(path)
+    try:
+        return "\n".join(page.get_text("text") for page in document)
+    finally:
+        document.close()

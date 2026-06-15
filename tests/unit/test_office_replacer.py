@@ -66,6 +66,23 @@ def test_pptx_text_frame_layout_helper_reduces_font_to_fit_region():
     assert pptx_text_region_fits(shape.text_frame, shape.width, shape.height)
 
 
+def test_pptx_text_frame_layout_preserves_mixed_run_font_sizes_when_region_fits():
+    presentation = Presentation()
+    slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+    shape = slide.shapes.add_textbox(0, 0, Inches(6), Inches(1.2))
+    paragraph = shape.text_frame.paragraphs[0]
+    paragraph.clear()
+    for text, size in (("大見出し", 18), (" 中見出し", 16), (" 本文", 14)):
+        run = paragraph.add_run()
+        run.text = text
+        run.font.size = PptxPt(size)
+
+    readable = _set_readable_text_frame_layout(shape.text_frame, shape.width, shape.height)
+
+    assert readable is True
+    assert [round(run.font.size.pt) for run in paragraph.runs] == [18, 16, 14]
+
+
 def test_pptx_text_frame_layout_helper_reports_unreadable_region():
     presentation = Presentation()
     slide = presentation.slides.add_slide(presentation.slide_layouts[6])
